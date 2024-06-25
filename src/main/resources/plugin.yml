@@ -1,0 +1,18 @@
+name: Test
+version: 1.0
+main: me.micau.test.Test
+description: Un plugin qui reçoit les données de profondeur de Kinect et modifie le monde Minecraft.
+api-version: 1.16
+commands:
+  startdepth:
+    description: Commande pour démarrer la réception des données de profondeur Kinect.
+    usage: /startdepth
+  stopdepth:
+    description: Commande pour arrêter la réception des données de profondeur Kinect.
+    usage: /stopdepth
+  reset:
+    description: Commande pour réinitialiser les blocs autour du joueur. Optionnellement, spécifiez le rayon en argument.
+    usage: /reset [rayon]
+  generatedepthmap:
+    description: Commande pour générer une fois la depth map à partir de données simulées.
+    usage: /generatedepthmap
