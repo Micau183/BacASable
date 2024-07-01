@@ -122,8 +122,8 @@ public class Test extends JavaPlugin {
                     byte[] depthData = depthBuffer.toByteArray();
                     byte[] colorData = colorBuffer.toByteArray();
 
-                    processDepthData(depthData);
-                    processColorData(colorData);
+                    processDepthDataConv(depthData);
+                   // processColorData(colorData);
 
                 } catch (IOException e) {
                     e.printStackTrace();
@@ -345,7 +345,7 @@ public class Test extends JavaPlugin {
 
 
 
-    private void processDepthData(byte[] depthData) {
+    private void processDepthDataFft(byte[] depthData) {
         new BukkitRunnable() {
             @Override
             public void run() {
@@ -358,6 +358,8 @@ public class Test extends JavaPlugin {
                     depthData[i] = (byte) ((depthData[i] - 770) * 100 / 130);
                 }
 
+
+
                 int size = nearestPowerOf2(Math.max(width, height));
 
                 // Perform FFT
@@ -366,7 +368,7 @@ public class Test extends JavaPlugin {
                 // Apply low-pass filter to frequencies
                 Complex[] processedFftData;
 
-                processedFftData = applyFilterToFrequencies(fftData, size, highPassFilter);
+                processedFftData = applyFilterToFrequencies(fftData, size, lowPassFilter);
 
                 // Perform inverse FFT
                 byte[] processedData = performInverseFFT(processedFftData, width, height);
@@ -378,11 +380,156 @@ public class Test extends JavaPlugin {
         }.runTask(this);
     }
 
+    @FunctionalInterface
+    public interface KernelFilter {
+        float[][] size(int size);
+    }
+
+
+    KernelFilter blurKernel = size -> {
+        float[][] kernel = new float[size][size];
+        float value = 1.0f / (size * size);
+        for (int i = 0; i < size; i++) {
+            for (int j = 0; j < size; j++) {
+                kernel[i][j] = value;
+            }
+        }
+        return kernel;
+    };
+
+    KernelFilter edgeKernel = size -> {
+        if (size == 3) {
+            return new float[][] {
+                    {-1, -1, -1},
+                    {-1,  8, -1},
+                    {-1, -1, -1}
+            };
+        } else if (size == 5) {
+            return new float[][] {
+                    { 0 / 10f, -1 / 10f, -1 / 10f, -1 / 10f,  0 / 10f },
+                    {-1 / 10f,  2 / 10f,  2 / 10f,  2 / 10f, -1 / 10f },
+                    {-1 / 10f,  2 / 10f,  8 / 10f,  2 / 10f, -1 / 10f },
+                    {-1 / 10f,  2 / 10f,  2 / 10f,  2 / 10f, -1 / 10f },
+                    { 0 / 10f, -1 / 10f, -1 / 10f, -1 / 10f,  0 / 10f }
+            };
+        } else {
+            throw new IllegalArgumentException("Edge detection kernel size must be 3 or 5.");
+        }
+    };
+
+    public static float[][] sobelXKernel() {
+        return new float[][] {
+                {-1/6f,  0,  1/6f},
+                {-2/6f,  0,  2/6f},
+                {-1/6f,  0,  1/6f}
+        };
+    }
+    public static float[][] sobelYKernel() {
+        return new float[][] {
+                {-1/3f, -2/3f, -1/3f},
+                { 0,  0,  0},
+                { 1/3f,  2/3f,  1/3f}
+        };
+    }
+
+
+
+    private void processDepthDataConv(byte[] depthData) {
+        new BukkitRunnable() {
+            @Override
+            public void run() {
+                int width = 512;
+                int height = 424;
+                setBorder();
+
+                // Convert byte data to 2D array of floats
+                float[][] image = convertTo2DArray(depthData, width, height);
+
+                float[][] result;
+                // Apply convolution filter
+                result = applyConvolution(image, sobelXKernel(), width, height);
+                result = applyConvolution(result, sobelYKernel(), width, height);
+                // Convert the result back to 1D byte array
+                convertTo1DArray(result, depthData, width, height);
+
+                setBlocks(depthData, width, height);
+            }
+        }.runTask(this);
+    }
+
+    // Converts byte array to 2D float array
+    private float[][] convertTo2DArray(byte[] depthData, int width, int height) {
+        float[][] image = new float[height][width];
+        for (int i = 0; i < height; i++) {
+            for (int j = 0; j < width; j++) {
+                image[i][j] = (depthData[i * width + j] & 0xFF); // Convert byte to unsigned int
+            }
+        }
+        return image;
+    }
+
+    // Applies a convolution filter to a 2D float array with mirror padding
+    private float[][] applyConvolution(float[][] image, float[][] kernel, int width, int height) {
+        int kernelHeight = kernel.length;
+        int kernelWidth = kernel[0].length;
+        int padY = kernelHeight / 2; // Calculate padding size (top and bottom)
+        int padX = kernelWidth / 2;  // Calculate padding size (left and right)
+
+        // Initialize result matrix with the same size as the input image
+        float[][] result = new float[height][width];
+
+        // Iterate over each pixel in the image
+        for (int y = 0; y < height; y++) {
+            for (int x = 0; x < width; x++) {
+                float sum = 0.0f;
+
+                // Apply the kernel to the surrounding pixels
+                for (int ky = -padY; ky <= padY; ky++) {
+                    for (int kx = -padX; kx <= padX; kx++) {
+                        // Reflect the coordinates
+                        int pixelY = y + ky;
+                        int pixelX = x + kx;
+
+                        // Handle boundary conditions with mirror padding
+                        if (pixelY < 0) {
+                            pixelY = -pixelY; // Reflect the top boundary
+                        } else if (pixelY >= height) {
+                            pixelY = 2 * height - pixelY - 2; // Reflect the bottom boundary
+                        }
+
+                        if (pixelX < 0) {
+                            pixelX = -pixelX; // Reflect the left boundary
+                        } else if (pixelX >= width) {
+                            pixelX = 2 * width - pixelX - 2; // Reflect the right boundary
+                        }
+
+                        sum += image[pixelY][pixelX] * kernel[ky + padY][kx + padX];
+                    }
+                }
+                result[y][x] = sum;
+            }
+        }
+
+        return result;
+    }
+
+
+
+    // Converts 2D float array back to 1D byte array
+    private void convertTo1DArray(float[][] result, byte[] depthData, int width, int height) {
+        for (int i = 0; i < height; i++) {
+            for (int j = 0; j < width; j++) {
+                depthData[i * width + j] = (byte) result[i][j];
+            }
+        }
+    }
+
+
     private void setBlocks(byte[] processedData, int width, int height) {
         for (int i = 0; i < processedData.length; i++) {
             int x = i % width;
             int z = i / width;
-            int y = 60 - processedData[i]/2;  // Assurez-vous que processedData[i] est traité correctement
+            int y = 60 - processedData[i];  // Assurez-vous que processedData[i] est traité correctement
 
 
             // Placer les blocs en conséquence
@@ -406,25 +553,6 @@ public class Test extends JavaPlugin {
 
 
 
-    private int getAverageDepth(byte[] depthData, int x, int z, int width, int height) {
-        int sumDepth = 0;
-        int count = 0;
-        int windowSize = 2; // This will create a 5x5 window
-
-        for (int dx = -windowSize; dx <= windowSize; dx++) {
-            for (int dz = -windowSize; dz <= windowSize; dz++) {
-                int nx = x + dx;
-                int nz = z + dz;
-
-                if (nx >= 0 && nx < width && nz >= 0 && nz < height) {
-                    sumDepth += depthData[nz * width + nx];
-                    count++;
-                }
-            }
-        }
-
-        return count > 0 ? sumDepth / count : 0;
-    }
 
     private void resetBlocksAround(Player player, int radius) {
         int centerX = player.getLocation().getBlockX();
