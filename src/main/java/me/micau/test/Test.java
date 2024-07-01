@@ -1,5 +1,6 @@
 package me.micau.test;
 
+import org.bukkit.HeightMap;
 import org.bukkit.Material;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandSender;
@@ -345,40 +346,40 @@ public class Test extends JavaPlugin {
 
 
 
-    private void processDepthDataFft(byte[] depthData) {
-        new BukkitRunnable() {
-            @Override
-            public void run() {
-                int width = 512;
-                int height = 424;
-                setBorder();
-
-                for (int i = 0; i < depthData.length; i++) {
-                    // Convertir byte en int non signé et ajuster les valeurs de profondeur
-                    depthData[i] = (byte) ((depthData[i] - 770) * 100 / 130);
-                }
-
-
-
-                int size = nearestPowerOf2(Math.max(width, height));
-
-                // Perform FFT
-                Complex[] fftData = performFFT(depthData, width, height);
-
-                // Apply low-pass filter to frequencies
-                Complex[] processedFftData;
-
-                processedFftData = applyFilterToFrequencies(fftData, size, lowPassFilter);
-
-                // Perform inverse FFT
-                byte[] processedData = performInverseFFT(processedFftData, width, height);
-
-
-                setBlocks(processedData, width, height);
-
-            }
-        }.runTask(this);
-    }
+//    private void processDepthDataFft(byte[] depthData) {
+//        new BukkitRunnable() {
+//            @Override
+//            public void run() {
+//                int width = 512;
+//                int height = 424;
+//                setBorder();
+//
+//                for (int i = 0; i < depthData.length; i++) {
+//                    // Convertir byte en int non signé et ajuster les valeurs de profondeur
+//                    depthData[i] = (byte) ((depthData[i] - 770) * 100 / 130);
+//                }
+//
+//
+//
+//                int size = nearestPowerOf2(Math.max(width, height));
+//
+//                // Perform FFT
+//                Complex[] fftData = performFFT(depthData, width, height);
+//
+//                // Apply low-pass filter to frequencies
+//                Complex[] processedFftData;
+//
+//                processedFftData = applyFilterToFrequencies(fftData, size, lowPassFilter);
+//
+//                // Perform inverse FFT
+//                byte[] processedData = performInverseFFT(processedFftData, width, height);
+//
+//
+//                setBlocks(processedData, width, height);
+//
+//            }
+//        }.runTask(this);
+//    }
 
     @FunctionalInterface
     public interface KernelFilter {
@@ -426,9 +427,9 @@ public class Test extends JavaPlugin {
     }
     public static float[][] sobelYKernel() {
         return new float[][] {
-                {-1/3f, -2/3f, -1/3f},
+                {-1/6f, -2/6f, -1/6f},
                 { 0,  0,  0},
-                { 1/3f,  2/3f,  1/3f}
+                { 1/6f,  2/6f,  1/6f}
         };
     }
 
@@ -445,14 +446,22 @@ public class Test extends JavaPlugin {
                 // Convert byte data to 2D array of floats
                 float[][] image = convertTo2DArray(depthData, width, height);
 
-                float[][] result;
+                float[][] processedDepthMap;
                 // Apply convolution filter
-                result = applyConvolution(image, sobelXKernel(), width, height);
-                result = applyConvolution(result, sobelYKernel(), width, height);
-                // Convert the result back to 1D byte array
-                convertTo1DArray(result, depthData, width, height);
+                processedDepthMap = applyConvolution(image, blurKernel.size(5), width, height);
 
-                setBlocks(depthData, width, height);
+                // Convert the result back to 1D byte array
+                byte[] depthMap = convertTo1DArray(processedDepthMap, width, height);
+
+                float[][] processedHeightMap;
+
+                processedHeightMap = applyConvolution(image, sobelYKernel(), width, height);
+                processedHeightMap = applyConvolution(processedHeightMap, sobelYKernel(), width, height);
+
+                byte[] HeightMap = convertTo1DArray(processedHeightMap, width, height);
+
+
+                setBlocks(depthMap, HeightMap, width, height);
             }
         }.runTask(this);
     }
@@ -516,16 +525,23 @@ public class Test extends JavaPlugin {
 
 
     // Converts 2D float array back to 1D byte array
-    private void convertTo1DArray(float[][] result, byte[] depthData, int width, int height) {
+    private byte[] convertTo1DArray(float[][] result, int width, int height) {
+        // Initialize the 1D byte array with the size of width * height
+        byte[] depthData = new byte[width * height];
+
+        // Convert 2D float array to 1D byte array
         for (int i = 0; i < height; i++) {
             for (int j = 0; j < width; j++) {
-                depthData[i * width + j] = (byte) result[i][j];
+                // Ensure the values are clamped between Byte.MIN_VALUE and Byte.MAX_VALUE
+                depthData[i * width + j] = (byte) Math.max(Byte.MIN_VALUE, Math.min(Byte.MAX_VALUE, result[i][j]));
             }
         }
+
+        return depthData;
     }
 
 
-    private void setBlocks(byte[] processedData, int width, int height) {
+    private void setBlocksold(byte[] processedData, int width, int height) {
         for (int i = 0; i < processedData.length; i++) {
             int x = i % width;
             int z = i / width;
@@ -550,6 +566,32 @@ public class Test extends JavaPlugin {
         }
 
     }
+    private void setBlocks(byte[] processedDepthData, byte[] processedHeightData,int width, int height) {
+        for (int i = 0; i < processedDepthData.length; i++) {
+            int x = i % width;
+            int z = i / width;
+            int y = 90 - processedDepthData[i];  // Assurez-vous que processedData[i] est traité correctement
+
+
+            // Placer les blocs en conséquence
+            for (int j = 0; j < 2 + 2*Math.abs(processedHeightData[i]); j++) {
+                int currentY = y - j;
+                Material material;
+
+                if (currentY < 60) {
+                    material = Material.GRASS_BLOCK;
+                } else if (currentY < 85) {
+                    material = Material.STONE;
+                } else {
+                    material = Material.SNOW_BLOCK;
+                }
+
+                getServer().getWorld("world").getBlockAt(x, currentY, z).setType(material);
+            }
+        }
+
+    }
+
 
 
 
