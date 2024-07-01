@@ -251,7 +251,7 @@ public class Test extends JavaPlugin {
         return pow;
     }
 
-    private byte[] applyLowPassFilter(byte[] depthData, int width, int height, double cutoffFrequency) {
+    private Complex[] performFFT(byte[] depthData, int width, int height) {
         // Determine the nearest power of 2 size for FFT
         int size = nearestPowerOf2(Math.max(width, height));
 
@@ -268,31 +268,82 @@ public class Test extends JavaPlugin {
 
         // Apply FFT
         FastFourierTransformer fft = new FastFourierTransformer(DftNormalization.STANDARD);
-        fftData = fft.transform(fftData, TransformType.FORWARD);
+        return fft.transform(fftData, TransformType.FORWARD);
+    }
 
-        // Apply low-pass filter
+    @FunctionalInterface
+    public interface FrequencyFilter {
+        Complex apply(double distance, Complex value, int size);
+    }
+
+    FrequencyFilter lowPassFilter = (distance, value, size) -> {
+        double cutoffFrequency = 0.1; // Example cutoff frequency
+        return distance > cutoffFrequency * size ? Complex.ZERO : value;
+    };
+
+    FrequencyFilter highPassFilter = (distance, value, size) -> {
+        double cutoffFrequency = 0.1; // Example cutoff frequency
+        return distance <= cutoffFrequency * size ? Complex.ZERO : value;
+    };
+
+    FrequencyFilter bandPassFilter = (distance, value, size) -> {
+        double lowCutoffFrequency = 0.1;
+        double highCutoffFrequency = 0.3;
+        return (distance > lowCutoffFrequency * size && distance < highCutoffFrequency * size) ? value : Complex.ZERO;
+    };
+
+    FrequencyFilter bandStopFilter = (distance, value, size) -> {
+        double lowCutoffFrequency = 0.1;
+        double highCutoffFrequency = 0.3;
+        return (distance < lowCutoffFrequency * size || distance > highCutoffFrequency * size) ? value : Complex.ZERO;
+    };
+
+    FrequencyFilter gaussianFilter = (distance, value, size) -> {
+        double sigma = 0.2;
+        double gaussian = Math.exp(-0.5 * Math.pow(distance / (sigma * size), 2));
+        return value.multiply(gaussian);
+    };
+
+    FrequencyFilter softHighPassFilter = (distance, value, size) -> {
+        double cutoffFrequency = 0.1;
+        double attenuation = 1 - Math.exp(-distance / (cutoffFrequency * size));
+        return value.multiply(attenuation);
+    };
+
+    FrequencyFilter softLowPassFilter = (distance, value, size) -> {
+        double cutoffFrequency = 0.1;
+        double attenuation = Math.exp(-distance / (cutoffFrequency * size));
+        return value.multiply(attenuation);
+    };
+
+    private Complex[] applyFilterToFrequencies(Complex[] fftData, int size, FrequencyFilter filter) {
         for (int y = 0; y < size; y++) {
             for (int x = 0; x < size; x++) {
                 double distance = Math.sqrt(x * x + y * y);
-                if (distance > cutoffFrequency * size) {
-                    fftData[y * size + x] = Complex.ZERO;
-                }
+                fftData[y * size + x] = filter.apply(distance, fftData[y * size + x], size);
             }
         }
+        return fftData;
+    }
 
+
+    private byte[] performInverseFFT(Complex[] fftData, int width, int height) {
         // Apply inverse FFT
-        fftData = fft.transform(fftData, TransformType.INVERSE);
+        FastFourierTransformer fft = new FastFourierTransformer(DftNormalization.STANDARD);
+        Complex[] ifftData = fft.transform(fftData, TransformType.INVERSE);
 
         // Extract the filtered depth data
         byte[] filteredData = new byte[width * height];
+        int size = nearestPowerOf2(Math.max(width, height));
         for (int y = 0; y < height; y++) {
             for (int x = 0; x < width; x++) {
-                filteredData[y * width + x] = (byte) Math.min(Math.max(fftData[y * size + x].getReal(), 0), 255);
+                filteredData[y * width + x] = (byte) Math.min(Math.max(ifftData[y * size + x].getReal(), 0), 255);
             }
         }
-
         return filteredData;
     }
+
+
 
     private void processDepthData(byte[] depthData) {
         new BukkitRunnable() {
@@ -304,37 +355,56 @@ public class Test extends JavaPlugin {
 
                 for (int i = 0; i < depthData.length; i++) {
                     // Convertir byte en int non signé et ajuster les valeurs de profondeur
-                    depthData[i] = (byte) ((depthData[i] & 0xFF - 770) * 100 / 150);
+                    depthData[i] = (byte) ((depthData[i] - 770) * 100 / 130);
                 }
 
-                // Appliquer le filtre passe-bas aux données de profondeur
-                byte[] filteredDepthData = applyLowPassFilter(depthData, width, height, 0.1);
-                byte[] filteredDepthData2 = applyLowPassFilter(filteredDepthData, width, height, 0.1);
-                for (int i = 0; i < filteredDepthData2.length; i++) {
-                    int x = i % width;
-                    int z = i / width;
-                    int y2 = getAverageDepth(depthData, x, z, width, height);
-                    // Convertir byte en int non signé pour utiliser dans les coordonnées
-                    int y = 60 - y2/2;
+                int size = nearestPowerOf2(Math.max(width, height));
 
-                    // Placer les blocs en conséquence
-                    setBlock(x, y, z);
-                    setBlock(x, y - 1, z);
-                    setBlock(x, y - 2, z);
-                }
+                // Perform FFT
+                Complex[] fftData = performFFT(depthData, width, height);
+
+                // Apply low-pass filter to frequencies
+                Complex[] processedFftData;
+
+                processedFftData = applyFilterToFrequencies(fftData, size, highPassFilter);
+
+                // Perform inverse FFT
+                byte[] processedData = performInverseFFT(processedFftData, width, height);
+
+
+                setBlocks(processedData, width, height);
+
             }
         }.runTask(this);
     }
 
-    private void setBlock(int x, int y, int z) {
-        if (y < 60) {
-            getServer().getWorld("world").getBlockAt(x, y, z).setType(Material.GRASS_BLOCK);
-        } else if (y < 85) {
-            getServer().getWorld("world").getBlockAt(x, y, z).setType(Material.STONE);
-        } else {
-            getServer().getWorld("world").getBlockAt(x, y, z).setType(Material.SNOW_BLOCK);
+    private void setBlocks(byte[] processedData, int width, int height) {
+        for (int i = 0; i < processedData.length; i++) {
+            int x = i % width;
+            int z = i / width;
+            int y = 60 - processedData[i]/2;  // Assurez-vous que processedData[i] est traité correctement
+
+
+            // Placer les blocs en conséquence
+            for (int j = 0; j < 3; j++) {
+                int currentY = y - j;
+                Material material;
+
+                if (currentY < 60) {
+                    material = Material.GRASS_BLOCK;
+                } else if (currentY < 85) {
+                    material = Material.STONE;
+                } else {
+                    material = Material.SNOW_BLOCK;
+                }
+
+                getServer().getWorld("world").getBlockAt(x, currentY, z).setType(material);
+            }
         }
+
     }
+
+
 
     private int getAverageDepth(byte[] depthData, int x, int z, int width, int height) {
         int sumDepth = 0;
