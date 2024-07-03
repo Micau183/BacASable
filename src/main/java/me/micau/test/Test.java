@@ -124,7 +124,7 @@ public class Test extends JavaPlugin {
                     byte[] colorData = colorBuffer.toByteArray();
 
                     processDepthDataConv(depthData);
-                   // processColorData(colorData);
+                    processColorData(colorData);
 
                 } catch (IOException e) {
                     e.printStackTrace();
@@ -146,39 +146,40 @@ public class Test extends JavaPlugin {
 
 
 
-    private byte[][][] convertToMatrix(byte[] data, int width, int height) {
-        byte[][][] matrix = new byte[height][width][4]; // Corrected width and height
+    private int[][][] convertToMatrix(byte[] data, int width, int height) {
+        int[][][] matrix = new int[height][width][4]; // Corrected width and height
 
         for (int i = 0; i < data.length; i += 4) {
             int pixelIndex = i / 4;
             int x = pixelIndex % width;
             int y = pixelIndex / width;
 
-            matrix[y][x][0] = data[i + 2]; // Blue
-            matrix[y][x][1] = data[i + 1]; // Green
-            matrix[y][x][2] = data[i];     // Red
-            matrix[y][x][3] = data[i + 3]; // Alpha
+            // Ensure byte to int conversion handles negative values correctly
+            matrix[y][x][0] = data[i] & 0xFF; // Blue
+            matrix[y][x][1] = data[i + 1] & 0xFF; // Green
+            matrix[y][x][2] = data[i + 2] & 0xFF; // Red
+            matrix[y][x][3] = data[i + 3] & 0xFF; // Alpha
         }
         return matrix;
     }
-    private BufferedImage matrixToBufferedImage(byte[][][] matrix, int width, int height) {
+
+    private BufferedImage matrixToBufferedImage(int[][][] matrix, int width, int height) {
         BufferedImage image = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB);
         for (int y = 0; y < height; y++) {
             for (int x = 0; x < width; x++) {
-                int b = matrix[y][x][0] & 0xFF;
-                int g = matrix[y][x][1] & 0xFF;
-                int r = matrix[y][x][2] & 0xFF;
-                int a = matrix[y][x][3] & 0xFF;
-                int rgba = (a << 24) | (r << 16) | (g << 8) | b;
+                int b = matrix[y][x][0];
+                int g = matrix[y][x][1];
+                int r = matrix[y][x][2];
+                int a = matrix[y][x][3];
+                int rgba = (a << 24) | (b << 16) | (g << 8) | r;
                 image.setRGB(x, y, rgba);
             }
         }
         return image;
     }
 
-
-    private byte[][][] resizeMatrix(byte[][][] matrix, int originalWidth, int originalHeight, int newWidth, int newHeight) {
-        byte[][][] resizedMatrix = new byte[newHeight][newWidth][4]; // Assuming RGBA format
+    private int[][][] resizeMatrix(int[][][] matrix, int originalWidth, int originalHeight, int newWidth, int newHeight) {
+        int[][][] resizedMatrix = new int[newHeight][newWidth][4]; // Assuming RGBA format
 
         for (int y = 0; y < newHeight; y++) {
             for (int x = 0; x < newWidth; x++) {
@@ -191,12 +192,35 @@ public class Test extends JavaPlugin {
         return resizedMatrix;
     }
 
-
-
     private void saveImage(BufferedImage image, String filePath) throws IOException {
         File file = new File(filePath);
         ImageIO.write(image, "png", file);
     }
+
+    private int[][] detectCouleur(int[][][] image, int width, int height) {
+        int[][] zoneCouleur = new int[height][width]; // Assuming RGBA format
+
+        for (int x = 0; x < height; x++) {
+            for (int y = 0; y < width; y++) {
+                int red = image[x][y][0];
+                int green = image[x][y][1];
+                int blue = image[x][y][2];
+
+                if (blue > green  && blue > red ) {
+                    zoneCouleur[x][y] = 1; // Detected blue
+                } else if (red > 140 && green < 100 && blue < 100) {
+                    zoneCouleur[x][y] = 2; // Detected red
+                } else if (green > 140 && red < 130 && blue < 130) {
+                    zoneCouleur[x][y] = 3; // Detected green
+                } else {
+                    zoneCouleur[x][y] = 0; // No color detected
+                }
+            }
+        }
+
+        return zoneCouleur;
+    }
+
 
     private void processColorData(byte[] colorData) {
         new BukkitRunnable() {
@@ -208,14 +232,14 @@ public class Test extends JavaPlugin {
                 int newHeight = 424;
 
                 // Convertir les données de couleur en matrice
-                byte[][][] colorMatrix = convertToMatrix(colorData, originalWidth, originalHeight);
+                int[][][] colorMatrix = convertToMatrix(colorData, originalWidth, originalHeight);
 
                 BufferedImage matrixImage = matrixToBufferedImage(colorMatrix, originalWidth, originalHeight);
 
-
                 // Redimensionner la matrice de couleur
-                byte[][][] resizedColorMatrix = resizeMatrix(colorMatrix, originalWidth, originalHeight, newWidth, newHeight);
+                int[][][] resizedColorMatrix = resizeMatrix(colorMatrix, originalWidth, originalHeight, newWidth, newHeight);
 
+                int[][] zoneBleu = detectCouleur(resizedColorMatrix, newWidth, newHeight);
 
                 // Convertir la matrice redimensionnée en BufferedImage
                 BufferedImage resizedImage = matrixToBufferedImage(resizedColorMatrix, newWidth, newHeight);
@@ -228,14 +252,16 @@ public class Test extends JavaPlugin {
                     e.printStackTrace();
                 }
 
-
-
                 // Traiter la matrice redimensionnée
                 for (int y = 0; y < newHeight; y++) {
                     for (int x = 0; x < newWidth; x++) {
-                        if (resizedColorMatrix[y][x][0] >= 100) {
-                            getServer().getWorld("world").getBlockAt(x, 120, y).setType(Material.BLACK_STAINED_GLASS);
-                        } else {
+                        if (zoneBleu[y][x] == 1) {
+                            getServer().getWorld("world").getBlockAt(x, 120, y).setType(Material.BLUE_STAINED_GLASS);
+                        } else if (zoneBleu[y][x] == 2) {
+                            getServer().getWorld("world").getBlockAt(x, 120, y).setType(Material.RED_STAINED_GLASS);
+                        } else if (zoneBleu[y][x] == 3) {
+                            getServer().getWorld("world").getBlockAt(x, 120, y).setType(Material.GREEN_STAINED_GLASS);
+                        } else{
                             getServer().getWorld("world").getBlockAt(x, 120, y).setType(Material.WHITE_STAINED_GLASS);
                         }
                     }
@@ -243,6 +269,21 @@ public class Test extends JavaPlugin {
             }
         }.runTask(this);
     }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
     private int nearestPowerOf2(int size) {
         int pow = 1;
@@ -451,27 +492,49 @@ public class Test extends JavaPlugin {
                 processedDepthMap = applyConvolution(image, blurKernel.size(5), width, height);
 
                 // Convert the result back to 1D byte array
-                byte[] depthMap = convertTo1DArray(processedDepthMap, width, height);
+                byte[] DepthMap = convertTo1DArray(processedDepthMap, width, height);
 
-                float[][] processedHeightMap;
+                float[][] processedHeightMapX = applyConvolution(image, sobelXKernel(), width, height);
+                float[][] processedHeightMapY = applyConvolution(image, sobelYKernel(), width, height);
 
-                processedHeightMap = applyConvolution(image, sobelYKernel(), width, height);
-                processedHeightMap = applyConvolution(processedHeightMap, sobelYKernel(), width, height);
+
+
+                float[][] processedHeightMap = sumAbsoluteValues( processedHeightMapX, processedHeightMapY);
 
                 byte[] HeightMap = convertTo1DArray(processedHeightMap, width, height);
 
 
-                setBlocks(depthMap, HeightMap, width, height);
+                setBlocks(DepthMap, HeightMap, width, height);
             }
         }.runTask(this);
     }
+    public static float[][] sumAbsoluteValues(float[][] matrix1, float[][] matrix2) {
+        // Vérifier que les deux matrices ont la même taille
+        if (matrix1.length != matrix2.length || matrix1[0].length != matrix2[0].length) {
+            throw new IllegalArgumentException("Les matrices doivent avoir la même taille.");
+        }
+
+        int rows = matrix1.length;
+        int cols = matrix1[0].length;
+        float[][] result = new float[rows][cols];
+
+        // Parcourir chaque élément des matrices
+        for (int i = 0; i < rows; i++) {
+            for (int j = 0; j < cols; j++) {
+                result[i][j] = Math.abs(matrix1[i][j]) + Math.abs(matrix2[i][j]);
+            }
+        }
+
+        return result;
+    }
+
 
     // Converts byte array to 2D float array
     private float[][] convertTo2DArray(byte[] depthData, int width, int height) {
         float[][] image = new float[height][width];
         for (int i = 0; i < height; i++) {
             for (int j = 0; j < width; j++) {
-                image[i][j] = (depthData[i * width + j] & 0xFF); // Convert byte to unsigned int
+                image[i][j] = (depthData[i * width + j]); // Convert byte to unsigned int
             }
         }
         return image;
@@ -541,31 +604,7 @@ public class Test extends JavaPlugin {
     }
 
 
-    private void setBlocksold(byte[] processedData, int width, int height) {
-        for (int i = 0; i < processedData.length; i++) {
-            int x = i % width;
-            int z = i / width;
-            int y = 60 - processedData[i];  // Assurez-vous que processedData[i] est traité correctement
 
-
-            // Placer les blocs en conséquence
-            for (int j = 0; j < 3; j++) {
-                int currentY = y - j;
-                Material material;
-
-                if (currentY < 60) {
-                    material = Material.GRASS_BLOCK;
-                } else if (currentY < 85) {
-                    material = Material.STONE;
-                } else {
-                    material = Material.SNOW_BLOCK;
-                }
-
-                getServer().getWorld("world").getBlockAt(x, currentY, z).setType(material);
-            }
-        }
-
-    }
     private void setBlocks(byte[] processedDepthData, byte[] processedHeightData,int width, int height) {
         for (int i = 0; i < processedDepthData.length; i++) {
             int x = i % width;
