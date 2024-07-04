@@ -22,7 +22,8 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 import javax.imageio.ImageIO;
-
+import java.util.LinkedList;
+import java.util.Queue;
 import org.apache.commons.math3.complex.Complex;
 import org.apache.commons.math3.transform.DftNormalization;
 import org.apache.commons.math3.transform.FastFourierTransformer;
@@ -33,6 +34,8 @@ public class Test extends JavaPlugin {
     private ServerSocket serverSocket;
     private ExecutorService clientHandlingExecutor;
     private boolean running = false;
+    private static final int[] ROW_DIRECTIONS = {-1, 1, 0, 0};
+    private static final int[] COL_DIRECTIONS = {0, 0, -1, 1};
 
     @Override
     public void onEnable() {
@@ -123,8 +126,7 @@ public class Test extends JavaPlugin {
                     byte[] depthData = depthBuffer.toByteArray();
                     byte[] colorData = colorBuffer.toByteArray();
 
-                    processDepthDataConv(depthData);
-                    processColorData(colorData);
+                    processDepthDataConv(depthData, colorData);
 
                 } catch (IOException e) {
                     e.printStackTrace();
@@ -221,11 +223,61 @@ public class Test extends JavaPlugin {
         return zoneCouleur;
     }
 
+    private static boolean isValid(int row, int col, int rows, int cols) {
+        return row >= 0 && row < rows && col >= 0 && col < cols;
+    }
 
-    private void processColorData(byte[] colorData) {
-        new BukkitRunnable() {
-            @Override
-            public void run() {
+    public static int[][] detectEau(int[][] matrix) {
+        int rows = matrix.length;
+        int cols = matrix[0].length;
+
+        Queue<int[]> queue = new LinkedList<>();
+        int[][] distances = new int[rows][cols];
+
+        // Initialize distances and queue with all the 0's
+        for (int i = 0; i < rows; i++) {
+            for (int j = 0; j < cols; j++) {
+                if (matrix[i][j] == 0) {
+                    queue.add(new int[]{i, j});
+                } else {
+                    distances[i][j] = Integer.MAX_VALUE;
+                }
+            }
+        }
+
+        // Perform BFS from all 0's simultaneously
+        while (!queue.isEmpty()) {
+            int[] current = queue.poll();
+            int currentRow = current[0];
+            int currentCol = current[1];
+
+            for (int k = 0; k < 4; k++) {
+                int newRow = currentRow + ROW_DIRECTIONS[k];
+                int newCol = currentCol + COL_DIRECTIONS[k];
+
+                if (isValid(newRow, newCol, rows, cols) && matrix[newRow][newCol] == 1 && distances[newRow][newCol] == Integer.MAX_VALUE) {
+                    distances[newRow][newCol] = distances[currentRow][currentCol] + 1;
+                    queue.add(new int[]{newRow, newCol});
+                }
+            }
+        }
+
+
+        // Update the original matrix with the distances
+        for (int i = 0; i < rows; i++) {
+            for (int j = 0; j < cols; j++) {
+                if (matrix[i][j] == 1) {
+                    matrix[i][j] = distances[i][j];
+                }
+            }
+        }
+
+        return matrix;
+    }
+
+
+    private int[][] getColorData(byte[] colorData) {
+
                 int originalWidth = 1920;
                 int originalHeight = 1080;
                 int newWidth = 512;
@@ -239,8 +291,9 @@ public class Test extends JavaPlugin {
                 // Redimensionner la matrice de couleur
                 int[][][] resizedColorMatrix = resizeMatrix(colorMatrix, originalWidth, originalHeight, newWidth, newHeight);
 
-                int[][] zoneBleu = detectCouleur(resizedColorMatrix, newWidth, newHeight);
+                int[][] zone_couleur= detectCouleur(resizedColorMatrix, newWidth, newHeight);
 
+                int[][] zoneBleu = detectEau(zone_couleur);
                 // Convertir la matrice redimensionnée en BufferedImage
                 BufferedImage resizedImage = matrixToBufferedImage(resizedColorMatrix, newWidth, newHeight);
 
@@ -253,21 +306,21 @@ public class Test extends JavaPlugin {
                 }
 
                 // Traiter la matrice redimensionnée
-                for (int y = 0; y < newHeight; y++) {
-                    for (int x = 0; x < newWidth; x++) {
-                        if (zoneBleu[y][x] == 1) {
-                            getServer().getWorld("world").getBlockAt(x, 120, y).setType(Material.BLUE_STAINED_GLASS);
-                        } else if (zoneBleu[y][x] == 2) {
-                            getServer().getWorld("world").getBlockAt(x, 120, y).setType(Material.RED_STAINED_GLASS);
-                        } else if (zoneBleu[y][x] == 3) {
-                            getServer().getWorld("world").getBlockAt(x, 120, y).setType(Material.GREEN_STAINED_GLASS);
-                        } else{
-                            getServer().getWorld("world").getBlockAt(x, 120, y).setType(Material.WHITE_STAINED_GLASS);
-                        }
-                    }
-                }
-            }
-        }.runTask(this);
+//                for (int y = 0; y < newHeight; y++) {
+//                    for (int x = 0; x < newWidth; x++) {
+//                        if (zoneBleu[y][x] == 1) {
+//                            getServer().getWorld("world").getBlockAt(x, 120, y).setType(Material.BLUE_STAINED_GLASS);
+//                        } else if (zoneBleu[y][x] == 2) {
+//                            getServer().getWorld("world").getBlockAt(x, 120, y).setType(Material.RED_STAINED_GLASS);
+//                        } else if (zoneBleu[y][x] == 3) {
+//                            getServer().getWorld("world").getBlockAt(x, 120, y).setType(Material.GREEN_STAINED_GLASS);
+//                        } else{
+//                            getServer().getWorld("world").getBlockAt(x, 120, y).setType(Material.WHITE_STAINED_GLASS);
+//                        }
+//                    }
+            return zoneBleu;
+
+
     }
 
 
@@ -476,7 +529,7 @@ public class Test extends JavaPlugin {
 
 
 
-    private void processDepthDataConv(byte[] depthData) {
+    private void processDepthDataConv(byte[] depthData, byte[] colorData) {
         new BukkitRunnable() {
             @Override
             public void run() {
@@ -504,7 +557,11 @@ public class Test extends JavaPlugin {
                 byte[] HeightMap = convertTo1DArray(processedHeightMap, width, height);
 
 
-                setBlocks(DepthMap, HeightMap, width, height);
+                int[][] colorMatrix = getColorData(colorData);
+                byte[] colorMap = convertTo1DArray(colorMatrix, width, height);
+                int waterlvl = getAverageWater(colorMap, HeightMap);
+
+                setBlocks(DepthMap, HeightMap, width, waterlvl,  colorMap);
             }
         }.runTask(this);
     }
@@ -602,14 +659,42 @@ public class Test extends JavaPlugin {
 
         return depthData;
     }
+    private byte[] convertTo1DArray(int[][] result, int width, int height) {
+        // Initialize the 1D byte array with the size of width * height
+        byte[] depthData = new byte[width * height];
 
+        // Convert 2D float array to 1D byte array
+        for (int i = 0; i < height; i++) {
+            for (int j = 0; j < width; j++) {
+                // Ensure the values are clamped between Byte.MIN_VALUE and Byte.MAX_VALUE
+                depthData[i * width + j] = (byte) Math.max(Byte.MIN_VALUE, Math.min(Byte.MAX_VALUE, result[i][j]));
+            }
+        }
 
+        return depthData;
+    }
 
-    private void setBlocks(byte[] processedDepthData, byte[] processedHeightData,int width, int height) {
+    private int getAverageWater (byte[] colorMap, byte[] depthMap){
+        int sum = 0;
+        int counter = 0;
+        for (int i = 0; i< colorMap.length; i++){
+            if (colorMap[i] != 0){
+                sum += depthMap[i];
+                counter += 1;
+            }
+        }
+        if (counter == 0){
+            return 50;
+        }else{
+        return (int) sum/counter;
+    }}
+
+    private void setBlocks(byte[] processedDepthData, byte[] processedHeightData,int width, int waterlvl, byte[] colorMap) {
         for (int i = 0; i < processedDepthData.length; i++) {
             int x = i % width;
             int z = i / width;
             int y = 90 - processedDepthData[i];  // Assurez-vous que processedData[i] est traité correctement
+
 
 
             // Placer les blocs en conséquence
@@ -626,6 +711,31 @@ public class Test extends JavaPlugin {
                 }
 
                 getServer().getWorld("world").getBlockAt(x, currentY, z).setType(material);
+
+
+            }
+            if(colorMap[i] != 0){
+                for (int j = 0; j < processedDepthData[i] - colorMap[i]; j++){
+                    int currentY = y - j;
+
+                    getServer().getWorld("world").getBlockAt(x, currentY, z).setType(Material.WATER);
+
+                }
+                int currentY = y - (processedDepthData[i] - colorMap[i] + 1);
+                Material material;
+
+                if (currentY < 60) {
+                    material = Material.GRASS_BLOCK;
+                } else if (currentY < 85) {
+                    material = Material.STONE;
+                } else {
+                    material = Material.SNOW_BLOCK;
+                }
+
+                getServer().getWorld("world").getBlockAt(x, currentY, z).setType(material);
+
+
+
             }
         }
 
