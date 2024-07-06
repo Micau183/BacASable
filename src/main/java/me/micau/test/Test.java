@@ -221,7 +221,7 @@ public class Test extends JavaPlugin {
                 int green = image[x][y][1];
                 int blue = image[x][y][2];
 
-                if (blue > 25 + green  && blue > 25 + red ) {
+                if (blue > 2 + green  && blue > 2 + red ) {
                     zoneCouleur[x][y] = 1; // Detected blue
                     //  LE RESTE TEMPORAIREMENT DESACTIVE
 //                } else if (red > 140 && green < 100 && blue < 100) {
@@ -253,6 +253,59 @@ public class Test extends JavaPlugin {
         if (i - c >= 0 && j - c >= 0 && matrix[i - c][j - c] == 0) return true;
 
         return false;
+    }
+    public static int[][] processMatrix(int[][] matrix) {
+        if (matrix == null || matrix.length == 0 || matrix[0].length == 0) {
+            throw new IllegalArgumentException("Matrix cannot be null or empty");
+        }
+
+        int rows = matrix.length;
+        int cols = matrix[0].length;
+        int[][] resultMatrix = new int[rows][cols];
+
+        // Parcourir chaque élément de la matrice
+        for (int i = 0; i < rows; i++) {
+            for (int j = 0; j < cols; j++) {
+                // Compter les voisins non nuls
+                int nonZeroNeighbors = countNonZeroNeighbors(matrix, i, j);
+
+                // Si l'élément a au moins 3 voisins non nuls, le copier dans la nouvelle matrice
+                if (nonZeroNeighbors >= 4) {
+                    resultMatrix[i][j] = matrix[i][j];
+                } else {
+                    resultMatrix[i][j] = 0;
+                }
+            }
+        }
+
+        return resultMatrix;
+    }
+
+    private static int countNonZeroNeighbors(int[][] matrix, int row, int col) {
+        int count = 0;
+        int rows = matrix.length;
+        int cols = matrix[0].length;
+
+        // Vérifier les 8 voisins possibles
+        for (int i = -1; i <= 1; i++) {
+            for (int j = -1; j <= 1; j++) {
+                if (i == 0 && j == 0) {
+                    continue; // Ignorer l'élément central
+                }
+
+                int neighborRow = row + i;
+                int neighborCol = col + j;
+
+                // Vérifier que le voisin est dans les limites de la matrice
+                if (neighborRow >= 0 && neighborRow < rows && neighborCol >= 0 && neighborCol < cols) {
+                    if (matrix[neighborRow][neighborCol] != 0) {
+                        count++;
+                    }
+                }
+            }
+        }
+
+        return count;
     }
 
     public static int[][] detectEau(int[][] matrix) {
@@ -324,7 +377,9 @@ public class Test extends JavaPlugin {
 
 
 
-                int[][] zoneBleu = detectEau(zone_couleur);
+                int[][] zoneBleu = processMatrix(processMatrix(detectEau(zone_couleur)));
+
+
 
             BufferedImage image = new BufferedImage(newWidth, newHeight, BufferedImage.TYPE_INT_RGB);
 
@@ -357,19 +412,6 @@ public class Test extends JavaPlugin {
                     e.printStackTrace();
                 }
 
-                // Traiter la matrice redimensionnée
-//                for (int y = 0; y < newHeight; y++) {
-//                    for (int x = 0; x < newWidth; x++) {
-//                        if (zoneBleu[y][x] == 1) {
-//                            getServer().getWorld("world").getBlockAt(x, 120, y).setType(Material.BLUE_STAINED_GLASS);
-//                        } else if (zoneBleu[y][x] == 2) {
-//                            getServer().getWorld("world").getBlockAt(x, 120, y).setType(Material.RED_STAINED_GLASS);
-//                        } else if (zoneBleu[y][x] == 3) {
-//                            getServer().getWorld("world").getBlockAt(x, 120, y).setType(Material.GREEN_STAINED_GLASS);
-//                        } else{
-//                            getServer().getWorld("world").getBlockAt(x, 120, y).setType(Material.WHITE_STAINED_GLASS);
-//                        }
-//                    }
             return zoneBleu;
 
 
@@ -613,7 +655,8 @@ public class Test extends JavaPlugin {
 
                 int[][] colorMatrix = getColorData(colorData);
                 byte[] colorMap = convertTo1DArray(colorMatrix, width, height);
-                int waterlvl = getAverageWater(colorMap, HeightMap);
+                int waterlvl  = getAverageWater(colorMap, DepthMap) +1;
+
 
                 setBlocks(DepthMap, HeightMap, width, waterlvl,  colorMap);
             }
@@ -728,20 +771,35 @@ public class Test extends JavaPlugin {
         return depthData;
     }
 
-    private int getAverageWater (byte[] colorMap, byte[] depthMap){
-        int sum = 0;
-        int counter = 0;
-        for (int i = 0; i< colorMap.length; i++){
-            if (colorMap[i] != 0){
-                sum += depthMap[i];
-                counter += 1;
+    public int getAverageWater(byte[] colorMap, byte[] depthMap) {
+        // Calcul pour la première moitié du tableau
+        int sum1 = 0;
+        int counter1 = 0;
+        for (int i = 0; i < colorMap.length; i++) {
+            if (colorMap[i] != 0) {
+                sum1 += depthMap[i];
+
+                counter1++;
             }
         }
-        if (counter == 0){
-            return 50;
-        }else{
-        return (int) sum/counter;
-    }}
+
+        int w1 = (counter1 == 0) ? 50 : sum1 / counter1;
+
+        return w1;
+    }
+    public int getLowerWater(byte[] colorMap, byte[] depthMap) {
+        // Calcul pour la première moitié du tableau
+        int mini = 0;
+        for (int i = 0; i < colorMap.length; i++) {
+            if (colorMap[i] != 0) {
+                if  (depthMap[i] > mini){
+                    mini = depthMap[i];
+                }
+            }
+        }
+        return mini;
+    }
+
 
     private void setBlocks(byte[] processedDepthData, byte[] processedHeightData,int width, int waterlvl, byte[] colorMap) {
         for (int i = 0; i < processedDepthData.length; i++) {
@@ -768,14 +826,23 @@ public class Test extends JavaPlugin {
 
 
             }
+            int delta;
             if(colorMap[i] != 0){
-//                for (int j = 0; j < processedDepthData[i] - colorMap[i]; j++){
-//                    int currentY = y - j;
-
-                    getServer().getWorld("world").getBlockAt(x, y, z).setType(Material.WATER);
+                for (int j = 0; j <(int)Math.sqrt(colorMap[i]); j++){
 
 
-               // }
+                    getServer().getWorld("world").getBlockAt(x, 90 -waterlvl -j , z).setType(Material.WATER);
+
+
+
+               }
+                getServer().getWorld("world").getBlockAt(x, 90 -waterlvl-(int)Math.sqrt(colorMap[i]), z).setType(Material.DIRT);
+
+                    getServer().getWorld("world").getBlockAt(x, 90 -waterlvl +1, z).setType(Material.AIR);
+                    getServer().getWorld("world").getBlockAt(x, 90 -waterlvl +2, z).setType(Material.AIR);
+                    getServer().getWorld("world").getBlockAt(x, 90 -waterlvl +3, z).setType(Material.AIR);
+                    getServer().getWorld("world").getBlockAt(x, 90 -waterlvl +4, z).setType(Material.AIR);
+                    getServer().getWorld("world").getBlockAt(x, 90 -waterlvl +5, z).setType(Material.AIR);
 //                int currentY = y - (processedDepthData[i] - colorMap[i] + 1);
 //                Material material;
 //
