@@ -3,7 +3,6 @@ me\micau\test\Test$StartDepthCommand.class
 me\micau\test\Test$StopDepthCommand.class
 me\micau\test\Test.class
 me\micau\test\Test$2.class
-me\micau\test\Test$4.class
 me\micau\test\Test$ResetCommand.class
 me\micau\test\Test$FrequencyFilter.class
 me\micau\test\Test$KernelFilter.class

@@ -22,8 +22,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 import javax.imageio.ImageIO;
-import java.util.LinkedList;
-import java.util.Queue;
+
 import org.apache.commons.math3.complex.Complex;
 import org.apache.commons.math3.transform.DftNormalization;
 import org.apache.commons.math3.transform.FastFourierTransformer;
@@ -182,12 +181,26 @@ public class Test extends JavaPlugin {
 
     private int[][][] resizeMatrix(int[][][] matrix, int originalWidth, int originalHeight, int newWidth, int newHeight) {
         int[][][] resizedMatrix = new int[newHeight][newWidth][4]; // Assuming RGBA format
+        float ratioH = 0.338F;
+        float ratioW = 0.3422F;
+        float cstH = -27F;
+        float cstW = 101F;
+
+        int newX;
+        int newY;
 
         for (int y = 0; y < newHeight; y++) {
             for (int x = 0; x < newWidth; x++) {
-                int srcX = x * originalWidth / newWidth;
-                int srcY = y * originalHeight / newHeight;
-                resizedMatrix[y][x] = matrix[srcY][srcX];
+                newX = (int) ((x + cstW) * (1 / ratioW));
+                newY = (int) ((y + cstH) * (1 / ratioH)); // Corrected from (x + cstH)
+
+                // Check bounds before accessing the original matrix
+                if (newX >= 0 && newX < originalWidth && newY >= 0 && newY < originalHeight) {
+                    resizedMatrix[y][x] = matrix[newY][newX];
+                } else {
+                    // Handle the case when newX or newY is out of bounds
+                    resizedMatrix[y][x] = new int[] {255, 255, 255, 255}; // Default white color for out-of-bounds
+                }
             }
         }
 
@@ -208,12 +221,13 @@ public class Test extends JavaPlugin {
                 int green = image[x][y][1];
                 int blue = image[x][y][2];
 
-                if (blue > green  && blue > red ) {
+                if (blue > 25 + green  && blue > 25 + red ) {
                     zoneCouleur[x][y] = 1; // Detected blue
-                } else if (red > 140 && green < 100 && blue < 100) {
-                    zoneCouleur[x][y] = 2; // Detected red
-                } else if (green > 140 && red < 130 && blue < 130) {
-                    zoneCouleur[x][y] = 3; // Detected green
+                    //  LE RESTE TEMPORAIREMENT DESACTIVE
+//                } else if (red > 140 && green < 100 && blue < 100) {
+//                    zoneCouleur[x][y] = 2; // Detected red
+//                } else if (green > 140 && red < 130 && blue < 130) {
+//                    zoneCouleur[x][y] = 3; // Detected green
                 } else {
                     zoneCouleur[x][y] = 0; // No color detected
                 }
@@ -223,56 +237,66 @@ public class Test extends JavaPlugin {
         return zoneCouleur;
     }
 
-    private static boolean isValid(int row, int col, int rows, int cols) {
-        return row >= 0 && row < rows && col >= 0 && col < cols;
+
+    public static boolean checkVoisin(int[][] matrix, int i, int j, int c) {
+        int rows = matrix.length;
+        int cols = matrix[0].length;
+
+        // Check each direction while ensuring we don't go out of bounds
+        if (i + c < rows && matrix[i + c][j] == 0) return true;
+        if (i - c >= 0 && matrix[i - c][j] == 0) return true;
+        if (j + c < cols && matrix[i][j + c] == 0) return true;
+        if (j - c >= 0 && matrix[i][j - c] == 0) return true;
+        if (i + c < rows && j + c < cols && matrix[i + c][j + c] == 0) return true;
+        if (i + c < rows && j - c >= 0 && matrix[i + c][j - c] == 0) return true;
+        if (i - c >= 0 && j + c < cols && matrix[i - c][j + c] == 0) return true;
+        if (i - c >= 0 && j - c >= 0 && matrix[i - c][j - c] == 0) return true;
+
+        return false;
     }
 
     public static int[][] detectEau(int[][] matrix) {
         int rows = matrix.length;
         int cols = matrix[0].length;
 
-        Queue<int[]> queue = new LinkedList<>();
-        int[][] distances = new int[rows][cols];
-
-        // Initialize distances and queue with all the 0's
         for (int i = 0; i < rows; i++) {
             for (int j = 0; j < cols; j++) {
-                if (matrix[i][j] == 0) {
-                    queue.add(new int[]{i, j});
-                } else {
-                    distances[i][j] = Integer.MAX_VALUE;
+                if (matrix[i][j] != 0) {
+                    int compteur = 1;
+                    while (true) {
+                        if (checkVoisin(matrix, i, j, compteur)) {
+                            matrix[i][j] = compteur;
+                            break;
+                        } else {
+                            compteur++;
+                        }
+                    }
                 }
             }
         }
-
-        // Perform BFS from all 0's simultaneously
-        while (!queue.isEmpty()) {
-            int[] current = queue.poll();
-            int currentRow = current[0];
-            int currentCol = current[1];
-
-            for (int k = 0; k < 4; k++) {
-                int newRow = currentRow + ROW_DIRECTIONS[k];
-                int newCol = currentCol + COL_DIRECTIONS[k];
-
-                if (isValid(newRow, newCol, rows, cols) && matrix[newRow][newCol] == 1 && distances[newRow][newCol] == Integer.MAX_VALUE) {
-                    distances[newRow][newCol] = distances[currentRow][currentCol] + 1;
-                    queue.add(new int[]{newRow, newCol});
-                }
-            }
-        }
-
-
-        // Update the original matrix with the distances
-        for (int i = 0; i < rows; i++) {
-            for (int j = 0; j < cols; j++) {
-                if (matrix[i][j] == 1) {
-                    matrix[i][j] = distances[i][j];
-                }
-            }
-        }
-
         return matrix;
+    }
+
+    public static void saveImage(float[][] matrix) {
+        int height = matrix.length;
+        int width = matrix[0].length;
+        BufferedImage image = new BufferedImage(width, height, BufferedImage.TYPE_INT_RGB);
+
+        // Remplir l'image avec les valeurs de la matrice
+        for (int y = 0; y < height; y++) {
+            for (int x = 0; x < width; x++) {
+                image.setRGB(x, y, (int)matrix[y][x]);
+            }
+        }
+
+        // Sauvegarder l'image en tant que fichier PNG
+        try {
+            File outputfile = new File("depth.png");
+            ImageIO.write(image, "png", outputfile);
+            System.out.println("Image saved successfully.");
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
     }
 
 
@@ -284,16 +308,44 @@ public class Test extends JavaPlugin {
                 int newHeight = 424;
 
                 // Convertir les données de couleur en matrice
+                assert (1920*1080*4 == colorData.length);
+
                 int[][][] colorMatrix = convertToMatrix(colorData, originalWidth, originalHeight);
 
                 BufferedImage matrixImage = matrixToBufferedImage(colorMatrix, originalWidth, originalHeight);
 
                 // Redimensionner la matrice de couleur
+
+
+
                 int[][][] resizedColorMatrix = resizeMatrix(colorMatrix, originalWidth, originalHeight, newWidth, newHeight);
 
                 int[][] zone_couleur= detectCouleur(resizedColorMatrix, newWidth, newHeight);
 
+
+
                 int[][] zoneBleu = detectEau(zone_couleur);
+
+            BufferedImage image = new BufferedImage(newWidth, newHeight, BufferedImage.TYPE_INT_RGB);
+
+        // Remplir l'image avec les valeurs de la matrice
+        for (int y = 0; y < newHeight; y++) {
+            for (int x = 0; x < newWidth; x++) {
+                int value = zone_couleur[y][x] == 1 ? 0xFFFFFF : 0x000000; // Blanc pour 1, noir pour 0
+                image.setRGB(x, y, value);
+            }
+        }
+
+        // Sauvegarder l'image en tant que fichier PNG
+        try {
+            File outputfile = new File("bleu.png");
+            ImageIO.write(image, "png", outputfile);
+            System.out.println("Image saved successfully.");
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+
+
                 // Convertir la matrice redimensionnée en BufferedImage
                 BufferedImage resizedImage = matrixToBufferedImage(resizedColorMatrix, newWidth, newHeight);
 
@@ -541,9 +593,11 @@ public class Test extends JavaPlugin {
                 float[][] image = convertTo2DArray(depthData, width, height);
 
                 float[][] processedDepthMap;
+
                 // Apply convolution filter
                 processedDepthMap = applyConvolution(image, blurKernel.size(5), width, height);
 
+                saveImage(processedDepthMap);
                 // Convert the result back to 1D byte array
                 byte[] DepthMap = convertTo1DArray(processedDepthMap, width, height);
 
@@ -715,24 +769,25 @@ public class Test extends JavaPlugin {
 
             }
             if(colorMap[i] != 0){
-                for (int j = 0; j < processedDepthData[i] - colorMap[i]; j++){
-                    int currentY = y - j;
+//                for (int j = 0; j < processedDepthData[i] - colorMap[i]; j++){
+//                    int currentY = y - j;
 
-                    getServer().getWorld("world").getBlockAt(x, currentY, z).setType(Material.WATER);
+                    getServer().getWorld("world").getBlockAt(x, y, z).setType(Material.WATER);
 
-                }
-                int currentY = y - (processedDepthData[i] - colorMap[i] + 1);
-                Material material;
 
-                if (currentY < 60) {
-                    material = Material.GRASS_BLOCK;
-                } else if (currentY < 85) {
-                    material = Material.STONE;
-                } else {
-                    material = Material.SNOW_BLOCK;
-                }
+               // }
+//                int currentY = y - (processedDepthData[i] - colorMap[i] + 1);
+//                Material material;
+//
+//                if (currentY < 60) {
+//                    material = Material.GRASS_BLOCK;
+//                } else if (currentY < 85) {
+//                    material = Material.STONE;
+//                } else {
+//                    material = Material.SNOW_BLOCK;
+//                }
 
-                getServer().getWorld("world").getBlockAt(x, currentY, z).setType(material);
+ //               getServer().getWorld("world").getBlockAt(x, currentY, z).setType(material);
 
 
 
