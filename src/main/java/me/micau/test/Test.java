@@ -1,6 +1,8 @@
 package me.micau.test;
 
+import org.bukkit.Location;
 import org.bukkit.Material;
+import org.bukkit.block.BlockFace;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandSender;
 import org.bukkit.command.CommandExecutor;
@@ -9,7 +11,7 @@ import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.scheduler.BukkitRunnable;
 
 import org.bukkit.block.Block;
-
+import org.bukkit.TreeType;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
@@ -228,8 +230,10 @@ public class Test extends JavaPlugin implements Listener  {
         ImageIO.write(image, "png", file);
     }
 
-    private int[][] detectCouleur(int[][][] image, int width, int height) {
-        int[][] zoneCouleur = new int[height][width]; // Assuming RGBA format
+    private int[][][] detectCouleur(int[][][] image, int width, int height) {
+        int[][] zoneBleue = new int[height][width];
+        int[][] zoneVerte = new int[height][width];
+        int[][] zoneRouge = new int[height][width]; // Assuming RGBA format
 
         for (int x = 0; x < height; x++) {
             for (int y = 0; y < width; y++) {
@@ -237,20 +241,27 @@ public class Test extends JavaPlugin implements Listener  {
                 int green = image[x][y][1];
                 int blue = image[x][y][2];
 
-                if (blue > 25 + green  && blue > 25 + red ) {
-                    zoneCouleur[x][y] = 1; // Detected blue
-                    //  LE RESTE TEMPORAIREMENT DESACTIVE
-//                } else if (red > 140 && green < 100 && blue < 100) {
-//                    zoneCouleur[x][y] = 2; // Detected red
-//                } else if (green > 140 && red < 130 && blue < 130) {
-//                    zoneCouleur[x][y] = 3; // Detected green
+                if (blue > 25 + green && blue > 25 + red) {
+                    zoneBleue[x][y] = 1; // Detected blue
+                    zoneRouge[x][y] = 0;
+                    zoneVerte[x][y] = 0;
+                } else if (red > 25 + green && red > 25 + blue) {
+                    zoneRouge[x][y] = 1; // Detected red
+                    zoneBleue[x][y] = 0;
+                    zoneVerte[x][y] = 0;
+                } else if (green > 10 + red && green > 10 + blue) {
+                    zoneVerte[x][y] = 1; // Detected green
+                    zoneBleue[x][y] = 0;
+                    zoneRouge[x][y] = 0;
                 } else {
-                    zoneCouleur[x][y] = 0; // No color detected
+                    zoneBleue[x][y] = 0;
+                    zoneRouge[x][y] = 0;
+                    zoneVerte[x][y] = 0; // No color detected
                 }
             }
         }
 
-        return zoneCouleur;
+        return new int[][][]{zoneRouge, zoneVerte, zoneBleue};
     }
 
 
@@ -345,6 +356,25 @@ public class Test extends JavaPlugin implements Listener  {
         }
         return matrix;
     }
+    public static int[][] placeArbre(int[][] matrix) {
+        int rows = matrix.length;
+        int cols = matrix[0].length;
+
+        double rand;
+
+        for (int i = 0; i < rows; i++) {
+            for (int j = 0; j < cols; j++) {
+                if (matrix[i][j] != 0) {
+                    rand = Math.random();
+                    if (rand < 0.998){
+                        matrix[i][j] = 0;
+                    }
+
+                }
+            }
+        }
+        return matrix;
+    }
 
     public static void saveImage(float[][] matrix) {
         int height = matrix.length;
@@ -369,7 +399,7 @@ public class Test extends JavaPlugin implements Listener  {
     }
 
 
-    private int[][] getColorData(byte[] colorData) {
+    private int[][][] getColorData(byte[] colorData) {
 
                 int originalWidth = 1920;
                 int originalHeight = 1080;
@@ -389,11 +419,14 @@ public class Test extends JavaPlugin implements Listener  {
 
                 int[][][] resizedColorMatrix = resizeMatrix(colorMatrix, originalWidth, originalHeight, newWidth, newHeight);
 
-                int[][] zone_couleur= detectCouleur(resizedColorMatrix, newWidth, newHeight);
+                int[][][] zone_couleur= detectCouleur(resizedColorMatrix, newWidth, newHeight);
 
 
 
-                int[][] zoneBleu = processMatrix(processMatrix(detectEau(zone_couleur)));
+                int[][] zoneBleue = processMatrix(processMatrix(detectEau(zone_couleur[2])));
+                int[][] zoneVerte = placeArbre(zone_couleur[1]);
+                int[][] zoneRouge = zone_couleur[0];
+
 
 
 
@@ -402,7 +435,7 @@ public class Test extends JavaPlugin implements Listener  {
         // Remplir l'image avec les valeurs de la matrice
         for (int y = 0; y < newHeight; y++) {
             for (int x = 0; x < newWidth; x++) {
-                int value = zone_couleur[y][x] == 1 ? 0xFFFFFF : 0x000000; // Blanc pour 1, noir pour 0
+                int value = zoneBleue[y][x] == 1 ? 0xFFFFFF : 0x000000; // Blanc pour 1, noir pour 0
                 image.setRGB(x, y, value);
             }
         }
@@ -428,7 +461,7 @@ public class Test extends JavaPlugin implements Listener  {
                     e.printStackTrace();
                 }
 
-            return zoneBleu;
+            return new int[][][]{zoneRouge, zoneVerte, zoneBleue};
 
 
     }
@@ -669,13 +702,15 @@ public class Test extends JavaPlugin implements Listener  {
                 byte[] HeightMap = convertTo1DArray(processedHeightMap, width, height);
 
 
-                int[][] colorMatrix = getColorData(colorData);
-                byte[] colorMap = convertTo1DArray(colorMatrix, width, height);
+                int[][][] colorMatrix = getColorData(colorData);
+                byte[] RedMap = convertTo1DArray(colorMatrix[0], width, height);
+                byte[] GreenMap = convertTo1DArray(colorMatrix[1], width, height);
+                byte[] BlueMap = convertTo1DArray(colorMatrix[2], width, height);
 
                 //getAverageWater(colorMap, DepthMap);
 
 
-                setBlocks(DepthMap, HeightMap, width,  colorMap);
+                setBlocks(DepthMap, HeightMap, width,  BlueMap, GreenMap);
             }
         }.runTask(this);
     }
@@ -818,21 +853,31 @@ public class Test extends JavaPlugin implements Listener  {
     }
 
 
-    private void setBlocks(byte[] processedDepthData, byte[] processedHeightData,int width, byte[] colorMap) {
+    private void setBlocks(byte[] processedDepthData, byte[] processedHeightData,int width, byte[] BlueMap, byte[] GreenMap) {
         for (int i = 0; i < processedDepthData.length; i++) {
             int x = i % width;
             int z = i / width;
             int y = 70 - processedDepthData[i]/2;  // Assurez-vous que processedData[i] est traité correctement
 
+            double rand;
 
-
-            // Placer les blocs en conséquence
+            // Le terrain
             for (int j = 0; j < 2 + 2*Math.abs(processedHeightData[i]); j++) {
                 int currentY = y - j;
                 Material material;
 
+
                 if (currentY < 60) {
+
                     material = Material.GRASS_BLOCK;
+                    rand = Math.random();
+
+                    if (rand < 0.003 ) {
+                        Block block = getServer().getWorld("world").getBlockAt(x, currentY, z);
+                        block.applyBoneMeal(BlockFace.UP);
+                    }
+
+
                 } else if (currentY < 85) {
                     material = Material.STONE;
                 } else {
@@ -844,49 +889,27 @@ public class Test extends JavaPlugin implements Listener  {
 
             }
 
-            if(colorMap[i] != 0){
-                getServer().getWorld("world").getBlockAt(x, y -((int)(2*Math.sqrt(colorMap[i]))), z).setType(Material.COARSE_DIRT);
-                getServer().getWorld("world").getBlockAt(x, y -((int)(2*Math.sqrt(colorMap[i])))-1, z).setType(Material.STONE);
+            // La flotte
 
-                for (int j =0 ; j <(int)(2*Math.sqrt(colorMap[i])); j++){
+            if(BlueMap[i] != 0){
+                getServer().getWorld("world").getBlockAt(x, y -((int)(2*Math.sqrt(BlueMap[i]))), z).setType(Material.GRAVEL);
+                getServer().getWorld("world").getBlockAt(x, y -((int)(2*Math.sqrt(BlueMap[i])))-1, z).setType(Material.STONE);
+
+                for (int j =0 ; j <(int)(2*Math.sqrt(BlueMap[i])); j++){
 
                    // if ((waterlvl < processedDepthData[i] -j +2)) {
                         getServer().getWorld("world").getBlockAt(x, y - j, z).setType(Material.WATER);
 
-
-                       // getServer().getWorld("world").getBlockAt(x, 90 - processedDepthData[i] - j, z).setType(Material.AIR);
-
-
-
                }
-
-
-
-//                    getServer().getWorld("world").getBlockAt(x, 90 -waterlvl +1, z).setType(Material.AIR);
-//                    getServer().getWorld("world").getBlockAt(x, 90 -waterlvl +2, z).setType(Material.AIR);
-//                    getServer().getWorld("world").getBlockAt(x, 90 -waterlvl +3, z).setType(Material.AIR);
-//                    getServer().getWorld("world").getBlockAt(x, 90 -waterlvl +4, z).setType(Material.AIR);
-//                    getServer().getWorld("world").getBlockAt(x, 90 -waterlvl +5, z).setType(Material.AIR);
-//                int currentY = y - (processedDepthData[i] - colorMap[i] + 1);
-//                Material material;
-//
-//                if (currentY < 60) {
-//                    material = Material.GRASS_BLOCK;
-//                } else if (currentY < 85) {
-//                    material = Material.STONE;
-//                } else {
-//                    material = Material.SNOW_BLOCK;
-//                }
-
- //               getServer().getWorld("world").getBlockAt(x, currentY, z).setType(material);
-
-
+            }
+            if(GreenMap[i] == 1){
+                Location location = new Location(Bukkit.getWorlds().get(0), x, y+1, z);
+                location.getWorld().generateTree(location, TreeType.BIRCH);
 
             }
         }
 
     }
-
 
 
 
