@@ -1,6 +1,5 @@
 package me.micau.test;
 
-import org.bukkit.HeightMap;
 import org.bukkit.Material;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandSender;
@@ -28,7 +27,15 @@ import org.apache.commons.math3.transform.DftNormalization;
 import org.apache.commons.math3.transform.FastFourierTransformer;
 import org.apache.commons.math3.transform.TransformType;
 
-public class Test extends JavaPlugin {
+
+import org.bukkit.Bukkit;
+import org.bukkit.Material;
+import org.bukkit.event.EventHandler;
+import org.bukkit.event.Listener;
+import org.bukkit.event.block.BlockFromToEvent;
+import org.bukkit.plugin.java.JavaPlugin;
+
+public class Test extends JavaPlugin implements Listener  {
 
     private ServerSocket serverSocket;
     private ExecutorService clientHandlingExecutor;
@@ -43,12 +50,21 @@ public class Test extends JavaPlugin {
         this.getCommand("startdepth").setExecutor(new StartDepthCommand());
         this.getCommand("stopdepth").setExecutor(new StopDepthCommand());
         this.getCommand("reset").setExecutor(new ResetCommand());
+        getServer().getPluginManager().registerEvents(this, this);
     }
 
     @Override
     public void onDisable() {
         getLogger().info("MyMinecraftPlugin est désactivé !");
         stopDepthDataReceiver();
+    }
+    @EventHandler
+    public void onBlockFlow(BlockFromToEvent event) {
+        // Vérifie si le bloc source ou de destination est de l'eau
+        if (event.getBlock().getType() == Material.WATER || event.getToBlock().getType() == Material.WATER) {
+            // Annule l'événement pour empêcher l'eau de se déplacer
+            event.setCancelled(true);
+        }
     }
 
     private void startDepthDataReceiver() {
@@ -221,7 +237,7 @@ public class Test extends JavaPlugin {
                 int green = image[x][y][1];
                 int blue = image[x][y][2];
 
-                if (blue > 2 + green  && blue > 2 + red ) {
+                if (blue > 25 + green  && blue > 25 + red ) {
                     zoneCouleur[x][y] = 1; // Detected blue
                     //  LE RESTE TEMPORAIREMENT DESACTIVE
 //                } else if (red > 140 && green < 100 && blue < 100) {
@@ -655,10 +671,11 @@ public class Test extends JavaPlugin {
 
                 int[][] colorMatrix = getColorData(colorData);
                 byte[] colorMap = convertTo1DArray(colorMatrix, width, height);
-                int waterlvl  = getAverageWater(colorMap, DepthMap) +1;
+
+                //getAverageWater(colorMap, DepthMap);
 
 
-                setBlocks(DepthMap, HeightMap, width, waterlvl,  colorMap);
+                setBlocks(DepthMap, HeightMap, width,  colorMap);
             }
         }.runTask(this);
     }
@@ -801,11 +818,11 @@ public class Test extends JavaPlugin {
     }
 
 
-    private void setBlocks(byte[] processedDepthData, byte[] processedHeightData,int width, int waterlvl, byte[] colorMap) {
+    private void setBlocks(byte[] processedDepthData, byte[] processedHeightData,int width, byte[] colorMap) {
         for (int i = 0; i < processedDepthData.length; i++) {
             int x = i % width;
             int z = i / width;
-            int y = 90 - processedDepthData[i];  // Assurez-vous que processedData[i] est traité correctement
+            int y = 70 - processedDepthData[i]/2;  // Assurez-vous que processedData[i] est traité correctement
 
 
 
@@ -826,23 +843,30 @@ public class Test extends JavaPlugin {
 
 
             }
-            int delta;
+
             if(colorMap[i] != 0){
-                for (int j = 0; j <(int)Math.sqrt(colorMap[i]); j++){
+                getServer().getWorld("world").getBlockAt(x, y -((int)(2*Math.sqrt(colorMap[i]))), z).setType(Material.COARSE_DIRT);
+                getServer().getWorld("world").getBlockAt(x, y -((int)(2*Math.sqrt(colorMap[i])))-1, z).setType(Material.STONE);
+
+                for (int j =0 ; j <(int)(2*Math.sqrt(colorMap[i])); j++){
+
+                   // if ((waterlvl < processedDepthData[i] -j +2)) {
+                        getServer().getWorld("world").getBlockAt(x, y - j, z).setType(Material.WATER);
 
 
-                    getServer().getWorld("world").getBlockAt(x, 90 -waterlvl -j , z).setType(Material.WATER);
+                       // getServer().getWorld("world").getBlockAt(x, 90 - processedDepthData[i] - j, z).setType(Material.AIR);
 
 
 
                }
-                getServer().getWorld("world").getBlockAt(x, 90 -waterlvl-(int)Math.sqrt(colorMap[i]), z).setType(Material.DIRT);
 
-                    getServer().getWorld("world").getBlockAt(x, 90 -waterlvl +1, z).setType(Material.AIR);
-                    getServer().getWorld("world").getBlockAt(x, 90 -waterlvl +2, z).setType(Material.AIR);
-                    getServer().getWorld("world").getBlockAt(x, 90 -waterlvl +3, z).setType(Material.AIR);
-                    getServer().getWorld("world").getBlockAt(x, 90 -waterlvl +4, z).setType(Material.AIR);
-                    getServer().getWorld("world").getBlockAt(x, 90 -waterlvl +5, z).setType(Material.AIR);
+
+
+//                    getServer().getWorld("world").getBlockAt(x, 90 -waterlvl +1, z).setType(Material.AIR);
+//                    getServer().getWorld("world").getBlockAt(x, 90 -waterlvl +2, z).setType(Material.AIR);
+//                    getServer().getWorld("world").getBlockAt(x, 90 -waterlvl +3, z).setType(Material.AIR);
+//                    getServer().getWorld("world").getBlockAt(x, 90 -waterlvl +4, z).setType(Material.AIR);
+//                    getServer().getWorld("world").getBlockAt(x, 90 -waterlvl +5, z).setType(Material.AIR);
 //                int currentY = y - (processedDepthData[i] - colorMap[i] + 1);
 //                Material material;
 //
