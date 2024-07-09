@@ -1,5 +1,5 @@
 package me.micau.test;
-
+import java.util.Random;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.block.BlockFace;
@@ -866,8 +866,17 @@ public class Test extends JavaPlugin implements Listener  {
                 int currentY = y - j;
                 Material material;
 
+                Random random = new Random();
 
-                if (currentY < 60) {
+                double gaussian = random.nextGaussian();
+
+                double factor = 1.5; // Ajuster ce facteur pour obtenir la distribution souhaitée
+                int randomNumber = (int) Math.max(-5, Math.min(5, Math.round(gaussian * factor)));
+
+                int Y_block = randomNumber + currentY;
+
+
+                if (Y_block < 60) {
 
                     material = Material.GRASS_BLOCK;
                     rand = Math.random();
@@ -878,7 +887,7 @@ public class Test extends JavaPlugin implements Listener  {
                     }
 
 
-                } else if (currentY < 85) {
+                } else if (Y_block < 85) {
                     material = Material.STONE;
                 } else {
                     material = Material.SNOW_BLOCK;
