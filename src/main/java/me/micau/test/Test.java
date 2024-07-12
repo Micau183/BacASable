@@ -1,4 +1,5 @@
 package me.micau.test;
+import java.util.ArrayList;
 import java.util.Random;
 import org.bukkit.Location;
 import org.bukkit.Material;
@@ -9,6 +10,8 @@ import org.bukkit.command.CommandExecutor;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.scheduler.BukkitRunnable;
+
+import java.util.List;
 
 import org.bukkit.block.Block;
 import org.bukkit.TreeType;
@@ -375,6 +378,49 @@ public class Test extends JavaPlugin implements Listener  {
         }
         return matrix;
     }
+    public static List<List<Pixel>> findZones(int[][] matrix) {
+        List<List<Pixel>> zones = new ArrayList<>();
+        if (matrix == null || matrix.length == 0) {
+            return zones;
+        }
+
+        int rows = matrix.length;
+        int cols = matrix[0].length;
+        boolean[][] visited = new boolean[rows][cols];
+
+        for (int i = 0; i < rows; i++) {
+            for (int j = 0; j < cols; j++) {
+                if (matrix[i][j] == 1 && !visited[i][j]) {
+                    List<Pixel> pixels = new ArrayList<>();
+                    dfs(matrix, visited, i, j, pixels);
+                    zones.add(pixels);
+                }
+            }
+        }
+
+        return zones;
+    }
+
+    private static void dfs(int[][] matrix, boolean[][] visited, int row, int col, List<Pixel> pixels) {
+        int[] rowOffsets = {-1, 1, 0, 0};
+        int[] colOffsets = {0, 0, -1, 1};
+
+        visited[row][col] = true;
+        pixels.add(new Pixel(row, col));
+
+        for (int k = 0; k < 4; k++) {
+            int newRow = row + rowOffsets[k];
+            int newCol = col + colOffsets[k];
+
+            if (isInBounds(matrix, newRow, newCol) && matrix[newRow][newCol] == 1 && !visited[newRow][newCol]) {
+                dfs(matrix, visited, newRow, newCol, pixels);
+            }
+        }
+    }
+
+    private static boolean isInBounds(int[][] matrix, int row, int col) {
+        return row >= 0 && row < matrix.length && col >= 0 && col < matrix[0].length;
+    }
 
     public static void saveImage(float[][] matrix) {
         int height = matrix.length;
@@ -397,7 +443,38 @@ public class Test extends JavaPlugin implements Listener  {
             e.printStackTrace();
         }
     }
+    public static void removeSmallZones(List<List<Pixel>> zones, int minSize) {
+        zones.removeIf(zone -> zone.size() < minSize);
+    }
 
+    private int[][] getClosestPixelsAndSizes(List<List<Pixel>> zones, int width, int height) {
+        int[][] result = new int[height][width]; // Initialiser la matrice de résultats
+
+        for (List<Pixel> zone : zones) {
+            Pixel closestPixel = getClosestPixel(zone, 0, 0);
+            int size = zone.size();
+
+            // Stocker la taille de la zone
+            result[closestPixel.row][closestPixel.col] = size;
+        }
+
+        return result;
+    }
+
+    private static Pixel getClosestPixel(List<Pixel> zone, int targetRow, int targetCol) {
+        Pixel closestPixel = null;
+        int minDistance = Integer.MAX_VALUE;
+
+        for (Pixel pixel : zone) {
+            int distance = Math.abs(pixel.row - targetRow) + Math.abs(pixel.col - targetCol);
+            if (distance < minDistance) {
+                minDistance = distance;
+                closestPixel = pixel;
+            }
+        }
+
+        return closestPixel;
+    }
 
     private int[][][] getColorData(byte[] colorData) {
 
@@ -425,7 +502,9 @@ public class Test extends JavaPlugin implements Listener  {
 
                 int[][] zoneBleue = processMatrix(processMatrix(detectEau(zone_couleur[2])));
                 int[][] zoneVerte = placeArbre(zone_couleur[1]);
-                int[][] zoneRouge = zone_couleur[0];
+                List<List<Pixel>>  zoneRougeTemp = findZones(zone_couleur[0]);
+                removeSmallZones(zoneRougeTemp, 10);
+                int[][] zoneRouge = getClosestPixelsAndSizes(zoneRougeTemp, 0, 0);
 
 
 
@@ -911,6 +990,7 @@ public class Test extends JavaPlugin implements Listener  {
 
                }
             }
+            // les arbres
             if(GreenMap[i] == 1){
                 Location location = new Location(Bukkit.getWorlds().get(0), x, y+1, z);
                 location.getWorld().generateTree(location, TreeType.BIRCH);
@@ -992,5 +1072,15 @@ public class Test extends JavaPlugin implements Listener  {
             }
             return false;
         }
+    }
+}
+
+class Pixel {
+    int row;
+    int col;
+
+    Pixel(int row, int col) {
+        this.row = row;
+        this.col = col;
     }
 }
