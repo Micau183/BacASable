@@ -1,6 +1,8 @@
 package me.micau.test;
+import java.io.*;
 import java.util.ArrayList;
 import java.util.Random;
+
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.block.BlockFace;
@@ -8,6 +10,7 @@ import org.bukkit.command.Command;
 import org.bukkit.command.CommandSender;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.entity.Player;
+import org.bukkit.plugin.Plugin;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.scheduler.BukkitRunnable;
 
@@ -16,10 +19,6 @@ import java.util.List;
 import org.bukkit.block.Block;
 import org.bukkit.TreeType;
 import java.awt.image.BufferedImage;
-import java.io.ByteArrayOutputStream;
-import java.io.File;
-import java.io.IOException;
-import java.io.InputStream;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.util.concurrent.ExecutorService;
@@ -40,6 +39,9 @@ import org.bukkit.event.Listener;
 import org.bukkit.event.block.BlockFromToEvent;
 import org.bukkit.plugin.java.JavaPlugin;
 
+
+
+
 public class Test extends JavaPlugin implements Listener  {
 
     private ServerSocket serverSocket;
@@ -56,7 +58,9 @@ public class Test extends JavaPlugin implements Listener  {
         this.getCommand("stopdepth").setExecutor(new StopDepthCommand());
         this.getCommand("reset").setExecutor(new ResetCommand());
         getServer().getPluginManager().registerEvents(this, this);
+
     }
+
 
     @Override
     public void onDisable() {
@@ -448,14 +452,13 @@ public class Test extends JavaPlugin implements Listener  {
     }
 
     private int[][] getClosestPixelsAndSizes(List<List<Pixel>> zones, int width, int height) {
-        int[][] result = new int[height][width]; // Initialiser la matrice de résultats
+        int[][] result = new int[424][512];
 
-        for (List<Pixel> zone : zones) {
+        for (int i = 0; i < zones.size(); i++) {
+            List<Pixel> zone = zones.get(i);
             Pixel closestPixel = getClosestPixel(zone, 0, 0);
-            int size = zone.size();
+            result[closestPixel.row][closestPixel.col] = zone.size();
 
-            // Stocker la taille de la zone
-            result[closestPixel.row][closestPixel.col] = size;
         }
 
         return result;
@@ -789,7 +792,7 @@ public class Test extends JavaPlugin implements Listener  {
                 //getAverageWater(colorMap, DepthMap);
 
 
-                setBlocks(DepthMap, HeightMap, width,  BlueMap, GreenMap);
+                setBlocks(DepthMap, HeightMap, width,  BlueMap, GreenMap, RedMap);
             }
         }.runTask(this);
     }
@@ -932,73 +935,98 @@ public class Test extends JavaPlugin implements Listener  {
     }
 
 
-    private void setBlocks(byte[] processedDepthData, byte[] processedHeightData,int width, byte[] BlueMap, byte[] GreenMap) {
+
+
+    public void setBlocks(byte[] processedDepthData, byte[] processedHeightData, int width, byte[] BlueMap, byte[] GreenMap, byte[] RedMap) {
+
         for (int i = 0; i < processedDepthData.length; i++) {
             int x = i % width;
             int z = i / width;
-            int y = 70 - processedDepthData[i]/2;  // Assurez-vous que processedData[i] est traité correctement
+            int y = 70 - processedDepthData[i] / 2;
 
             double rand;
 
-            // Le terrain
-            for (int j = 0; j < 2 + 2*Math.abs(processedHeightData[i]); j++) {
+            // Terrain generation
+            for (int j = 0; j < 2 + 2 * Math.abs(processedHeightData[i]); j++) {
                 int currentY = y - j;
                 Material material;
 
                 Random random = new Random();
-
                 double gaussian = random.nextGaussian();
-
-                double factor = 1.5; // Ajuster ce facteur pour obtenir la distribution souhaitée
+                double factor = 1.5;
                 int randomNumber = (int) Math.max(-5, Math.min(5, Math.round(gaussian * factor)));
-
                 int Y_block = randomNumber + currentY;
 
-
                 if (Y_block < 60) {
-
                     material = Material.GRASS_BLOCK;
                     rand = Math.random();
-
-                    if (rand < 0.003 ) {
-                        Block block = getServer().getWorld("world").getBlockAt(x, currentY, z);
-                        block.applyBoneMeal(BlockFace.UP);
+                    if (rand < 0.003) {
+                        Bukkit.getWorld("world").getBlockAt(x, currentY, z).applyBoneMeal(BlockFace.UP);
                     }
-
-
                 } else if (Y_block < 85) {
                     material = Material.STONE;
                 } else {
                     material = Material.SNOW_BLOCK;
                 }
 
-                getServer().getWorld("world").getBlockAt(x, currentY, z).setType(material);
-
-
+                Bukkit.getWorld("world").getBlockAt(x, currentY, z).setType(material);
             }
 
-            // La flotte
+            // Water generation
+            if (BlueMap[i] != 0) {
+                Bukkit.getWorld("world").getBlockAt(x, y - ((int) (2 * Math.sqrt(BlueMap[i]))), z).setType(Material.GRAVEL);
+                Bukkit.getWorld("world").getBlockAt(x, y - ((int) (2 * Math.sqrt(BlueMap[i]))) - 1, z).setType(Material.STONE);
 
-            if(BlueMap[i] != 0){
-                getServer().getWorld("world").getBlockAt(x, y -((int)(2*Math.sqrt(BlueMap[i]))), z).setType(Material.GRAVEL);
-                getServer().getWorld("world").getBlockAt(x, y -((int)(2*Math.sqrt(BlueMap[i])))-1, z).setType(Material.STONE);
-
-                for (int j =0 ; j <(int)(2*Math.sqrt(BlueMap[i])); j++){
-
-                   // if ((waterlvl < processedDepthData[i] -j +2)) {
-                        getServer().getWorld("world").getBlockAt(x, y - j, z).setType(Material.WATER);
-
-               }
+                for (int j = 0; j < (int) (2 * Math.sqrt(BlueMap[i])); j++) {
+                    Bukkit.getWorld("world").getBlockAt(x, y - j, z).setType(Material.WATER);
+                }
             }
-            // les arbres
-            if(GreenMap[i] == 1){
-                Location location = new Location(Bukkit.getWorlds().get(0), x, y+1, z);
+
+            // Tree generation
+            if (GreenMap[i] == 1) {
+                Location location = new Location(Bukkit.getWorlds().get(0), x, y + 1, z);
                 location.getWorld().generateTree(location, TreeType.BIRCH);
+            }
 
+
+
+            if (RedMap[i] != 0) {
+
+                Location dest = new Location(Bukkit.getWorld("world"), x, y, z);
+
+                Location loc1 = new Location(Bukkit.getWorld("world"), -1032, 0, -1000);
+                Location loc2 = new Location(Bukkit.getWorld("world"), -1045, 14, -1018);
+
+                copyAndPaste(loc1, loc2, dest);
+
+            }
+
+
+        }
+    }
+
+    public void copyAndPaste(Location loc1, Location loc2, Location dest) {
+        int minX = Math.min(loc1.getBlockX(), loc2.getBlockX());
+        int minY = Math.min(loc1.getBlockY(), loc2.getBlockY());
+        int minZ = Math.min(loc1.getBlockZ(), loc2.getBlockZ());
+        int maxX = Math.max(loc1.getBlockX(), loc2.getBlockX());
+        int maxY = Math.max(loc1.getBlockY(), loc2.getBlockY());
+        int maxZ = Math.max(loc1.getBlockZ(), loc2.getBlockZ());
+
+        for (int x = minX; x <= maxX; x++) {
+            for (int y = minY; y <= maxY; y++) {
+                for (int z = minZ; z <= maxZ; z++) {
+                    Block block = loc1.getWorld().getBlockAt(x, y, z);
+                    Location newLoc = new Location(dest.getWorld(), dest.getBlockX() + (x - minX), dest.getBlockY() + (y - minY), dest.getBlockZ() + (z - minZ));
+                    newLoc.getBlock().setType(block.getType());
+                }
             }
         }
-
     }
+
+
+
+
 
 
 
@@ -1074,6 +1102,8 @@ public class Test extends JavaPlugin implements Listener  {
         }
     }
 }
+
+
 
 class Pixel {
     int row;
