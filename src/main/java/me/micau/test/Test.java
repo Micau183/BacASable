@@ -3,8 +3,7 @@ import java.io.*;
 import java.util.ArrayList;
 import java.util.Random;
 
-import org.bukkit.Location;
-import org.bukkit.Material;
+import org.bukkit.*;
 import org.bukkit.block.BlockFace;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandSender;
@@ -17,7 +16,7 @@ import org.bukkit.scheduler.BukkitRunnable;
 import java.util.List;
 
 import org.bukkit.block.Block;
-import org.bukkit.TreeType;
+
 import java.awt.image.BufferedImage;
 import java.net.ServerSocket;
 import java.net.Socket;
@@ -25,6 +24,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 import javax.imageio.ImageIO;
+import javax.security.auth.login.CredentialException;
 
 import org.apache.commons.math3.complex.Complex;
 import org.apache.commons.math3.transform.DftNormalization;
@@ -32,7 +32,6 @@ import org.apache.commons.math3.transform.FastFourierTransformer;
 import org.apache.commons.math3.transform.TransformType;
 
 
-import org.bukkit.Bukkit;
 import org.bukkit.Material;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
@@ -252,7 +251,7 @@ public class Test extends JavaPlugin implements Listener  {
                     zoneBleue[x][y] = 1; // Detected blue
                     zoneRouge[x][y] = 0;
                     zoneVerte[x][y] = 0;
-                } else if (red > 25 + green && red > 25 + blue) {
+                } else if (red > 40 + green && red > 40 + blue) {
                     zoneRouge[x][y] = 1; // Detected red
                     zoneBleue[x][y] = 0;
                     zoneVerte[x][y] = 0;
@@ -457,7 +456,8 @@ public class Test extends JavaPlugin implements Listener  {
         for (int i = 0; i < zones.size(); i++) {
             List<Pixel> zone = zones.get(i);
             Pixel closestPixel = getClosestPixel(zone, 0, 0);
-            result[closestPixel.row][closestPixel.col] = zone.size();
+            result[closestPixel.row][closestPixel.col] = zone.size()/10;
+            //System.out.println("Zone "  + i + " : " + zone.size()/10);
 
         }
 
@@ -989,23 +989,60 @@ public class Test extends JavaPlugin implements Listener  {
             }
 
 
+            if (RedMap[i] != 0){
+            Location dest = new Location(Bukkit.getWorld("world"), x, y, z);
+            Location loc1;
+            Location loc2;
 
-            if (RedMap[i] != 0) {
-
-                Location dest = new Location(Bukkit.getWorld("world"), x, y, z);
-
-                Location loc1 = new Location(Bukkit.getWorld("world"), -1032, 0, -1000);
-                Location loc2 = new Location(Bukkit.getWorld("world"), -1045, 14, -1018);
+            //well
+            if ( 1 < RedMap[i] && RedMap[i] < 4) {
+                System.out.println("Well at "+ x + ", " + y + ", " + z + " with size : " + RedMap[i]);
+                loc1 = new Location(Bukkit.getWorld("world"), -1005, 9, -1029);
+                loc2 = new Location(Bukkit.getWorld("world"), -1016, 21, -1019);
 
                 copyAndPaste(loc1, loc2, dest);
 
             }
+            // tour
+            else if  ( RedMap[i] < 5) {
+                System.out.println("Tower at "+ x + ", " + y + ", " + z + " with size : " + RedMap[i]);
+                loc1 = new Location(Bukkit.getWorld("world"), -1045, 1, -982);
+                loc2 = new Location(Bukkit.getWorld("world"), -1031, 37, -995);
+                copyAndPaste(loc1, loc2, dest);
+            }
 
+            else if  ( RedMap[i] < 8) {
+                System.out.println("Grange at "+ x + ", " + y + ", " + z + " with size : " + RedMap[i]);
+                loc1 = new Location(Bukkit.getWorld("world"), -1019, 0, -980);
+                loc2 = new Location(Bukkit.getWorld("world"), -1006, 21, -1000);
+                copyAndPaste(loc1, loc2, dest);
+            }
+            //grange petite
+            else if  ( RedMap[i] < 15) {
+                System.out.println("Grange at "+ x + ", " + y + ", " + z + " with size : " + RedMap[i]);
+                loc1 = new Location(Bukkit.getWorld("world"), -1032, 0, -1000);
+                loc2 = new Location(Bukkit.getWorld("world"), -1045, 14, -1018);
+                copyAndPaste(loc1, loc2, dest);
+            }
 
-        }
+            else if  ( RedMap[i] < 20) {
+                System.out.println("House at "+ x + ", " + y + ", " + z + " with size : " + RedMap[i]);
+                loc1 = new Location(Bukkit.getWorld("world"), -1000, 1, -1000);
+                loc2 = new Location(Bukkit.getWorld("world"), -982, 22, -977);
+                copyAndPaste(loc1, loc2, dest);
+            }
+            else if  ( RedMap[i] > 20){
+                System.out.println("Stable at "+ x + ", " + y + ", " + z + " with size : " + RedMap[i]);
+                loc1 = new Location(Bukkit.getWorld("world"), -1048, 20, -1042);
+                loc2 = new Location(Bukkit.getWorld("world"), -1083, 43, -1002);
+                copyAndPaste(loc1, loc2, dest);
+            }
+        }}
     }
 
     public void copyAndPaste(Location loc1, Location loc2, Location dest) {
+        World world = loc1.getWorld();
+
         int minX = Math.min(loc1.getBlockX(), loc2.getBlockX());
         int minY = Math.min(loc1.getBlockY(), loc2.getBlockY());
         int minZ = Math.min(loc1.getBlockZ(), loc2.getBlockZ());
@@ -1016,13 +1053,26 @@ public class Test extends JavaPlugin implements Listener  {
         for (int x = minX; x <= maxX; x++) {
             for (int y = minY; y <= maxY; y++) {
                 for (int z = minZ; z <= maxZ; z++) {
-                    Block block = loc1.getWorld().getBlockAt(x, y, z);
-                    Location newLoc = new Location(dest.getWorld(), dest.getBlockX() + (x - minX), dest.getBlockY() + (y - minY), dest.getBlockZ() + (z - minZ));
-                    newLoc.getBlock().setType(block.getType());
+                    Block block = world.getBlockAt(x, y, z);
+
+                    // Skip air, dirt, and grass blocks
+                    if (block.getType() != Material.AIR && block.getType() != Material.DIRT && block.getType() != Material.GRASS_BLOCK) {
+                        // Calculate the new location for the block
+                        Location newLoc = new Location(dest.getWorld(), dest.getBlockX() + (x - minX), dest.getBlockY() + (y - minY), dest.getBlockZ() + (z - minZ));
+
+                        // Set the type and state of the block at the new location
+                        Block newBlock = newLoc.getBlock();
+                        newBlock.setType(block.getType(), false); // Use the "applyPhysics" flag as false to prevent unintended updates
+
+                        // Copy the block data
+                        newBlock.setBlockData(block.getBlockData());
+                    }
                 }
             }
         }
     }
+
+
 
 
 
